@@ -421,9 +421,9 @@ int mcp3008_read_adc(uint8_t chan){
 void mcp3008_sample_adc(uint8_t channel, int millis, vector<int> & dest){
 	typedef std::chrono::high_resolution_clock clock;
     typedef std::chrono::duration<float, std::milli> duration;
-	bcm2835_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_128);
-	bcm2835_spi_chipSelect(BCM2835_SPI_CS0);
-	bcm2835_spi_begin();
+	//bcm2835_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_128);
+	//bcm2835_spi_chipSelect(BCM2835_SPI_CS0);
+	//bcm2835_spi_begin();
 
 	clock::time_point start = clock::now();
 
@@ -438,7 +438,7 @@ void mcp3008_sample_adc(uint8_t channel, int millis, vector<int> & dest){
         dest.push_back(value );
     }
 
-	bcm2835_spi_end();
+	//bcm2835_spi_end();
 }
 
 
@@ -495,10 +495,10 @@ class Mcp3008SampleWorker : public AsyncWorker {
     void HandleOKCallback () {
 
 
-v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
 
-SampleResult sampleResult = calc_sample_result(samples);
-Local<Object> packedResult = Object::New(isolate);
+    SampleResult sampleResult = calc_sample_result(samples);
+    Local<Object> packedResult = Object::New(isolate);
       pack_sample_result(isolate, packedResult, sampleResult);
 
         Local<Value> argv[] = { packedResult };
@@ -518,6 +518,11 @@ NAN_METHOD(mcp3008_sample_adc) {
 	int limit = To<int>(info[1]).FromJust();
     Callback *callback = new Callback(info[2].As<Function>());
     AsyncQueueWorker(new Mcp3008SampleWorker(channel, limit, callback));
+}
+
+NAN_METHOD(mcp3008_read_adc) {
+    uint8_t channel = info[0]->Uint32Value();
+    info.GetReturnValue().Set(mcp3008_read_adc(channel));
 }
 
 NAN_MODULE_INIT(setup)
@@ -556,6 +561,7 @@ NAN_MODULE_INIT(setup)
 	NAN_EXPORT(target, spi_write);
 	NAN_EXPORT(target, spi_end);
 	NAN_EXPORT(target, mcp3008_sample_adc);
+	NAN_EXPORT(target, mcp3008_read_adc);
 }
 
 NODE_MODULE(rpio, setup);
