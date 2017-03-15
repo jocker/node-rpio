@@ -512,7 +512,7 @@ Local<Object> packedResult = Object::New(isolate);
     vector<int> samples;
 };
 
-NAN_METHOD(sampleAdc) {
+NAN_METHOD(mcp3008_sample_adc) {
 
     uint8_t channel = info[0]->Uint32Value();
 	int limit = To<int>(info[1]).FromJust();
@@ -555,7 +555,7 @@ NAN_MODULE_INIT(setup)
 	NAN_EXPORT(target, spi_transfer);
 	NAN_EXPORT(target, spi_write);
 	NAN_EXPORT(target, spi_end);
-	NAN_EXPORT(target, sampleAdc);
+	NAN_EXPORT(target, mcp3008_sample_adc);
 }
 
 NODE_MODULE(rpio, setup);
