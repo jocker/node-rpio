@@ -17,11 +17,18 @@
 #include <nan.h>
 #include <unistd.h>	/* usleep() */
 #include "bcm2835.h"
+#include <chrono>
 
 #define RPIO_EVENT_LOW	0x1
 #define RPIO_EVENT_HIGH	0x2
 
+
+
+using namespace std;
 using namespace Nan;
+using namespace v8;
+
+
 
 /*
  * GPIO function select.  Pass through all values supported by bcm2835.
@@ -401,6 +408,118 @@ NAN_METHOD(rpio_usleep)
 	usleep(info[0]->NumberValue());
 }
 
+
+//NEW STUFF COMES HERE
+
+int mcp3008_read_adc(uint8_t chan){
+	char tx[] = {0x01,(0x08|chan)<<4,0x01};
+	char rx[3];
+	bcm2835_spi_transfernb(tx,rx,3);
+	return ((int)rx[1] & 0x03) << 8 | (int) rx[2];
+}
+
+void mcp3008_sample_adc(uint8_t channel, int millis, vector<int> & dest){
+	typedef std::chrono::high_resolution_clock clock;
+    typedef std::chrono::duration<float, std::milli> duration;
+	bcm2835_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_128);
+	bcm2835_spi_chipSelect(BCM2835_SPI_CS0);
+	bcm2835_spi_begin();
+
+	clock::time_point start = clock::now();
+
+	while(true){
+
+        duration elapsed = clock::now() - start;
+        if(elapsed.count() > millis){
+            break;
+        }
+		int value = mcp3008_read_adc(channel);
+
+        dest.push_back(value );
+    }
+
+	bcm2835_spi_end();
+}
+
+
+class SampleResult{
+  public:
+	int min = -1;
+	int max = -1;
+	double sum = 0;
+	int avg = 0;
+	int count = 0;
+	int amplitude = 0;
+};
+
+SampleResult calc_sample_result(vector<int> & samples){
+	SampleResult result;
+	result.count = samples.size();
+
+	for (const int sample : samples) {
+   	 	result.sum += sample;
+		if(result.min<0 || result.min > sample){
+			result.min = sample;
+		}
+		if(result.max < 0 || result.max < sample){
+			result.max = sample;
+		}
+  	}
+
+if(result.count > 0){
+	result.avg = result.sum/result.count;
+	result.amplitude = result.max - result.min;
+}
+
+	  return result;
+}
+
+void pack_sample_result(v8::Isolate* isolate, v8::Local<v8::Object> & target, SampleResult & result){
+  target->Set(String::NewFromUtf8(isolate, "min"), Integer::New(isolate, result.min));
+  target->Set(String::NewFromUtf8(isolate, "max"), Integer::New(isolate, result.max));
+  target->Set(String::NewFromUtf8(isolate, "avg"), Integer::New(isolate, result.avg));
+  target->Set(String::NewFromUtf8(isolate, "count"), Integer::New(isolate, result.count));
+  target->Set(String::NewFromUtf8(isolate, "sum"), Number::New(isolate, result.sum));
+  target->Set(String::NewFromUtf8(isolate, "amplitude"), Integer::New(isolate, result.amplitude));
+}
+
+class Mcp3008SampleWorker : public AsyncWorker {
+    public:
+    Mcp3008SampleWorker(uint8_t channel, int limit, Callback * callback ) : channel(channel), limit(limit),  AsyncWorker(callback) {
+    }
+
+    void Execute() {
+        mcp3008_sample_adc(channel, limit, samples);
+    }
+
+    void HandleOKCallback () {
+
+
+v8::Isolate* isolate = v8::Isolate::GetCurrent();
+
+SampleResult sampleResult = calc_sample_result(samples);
+Local<Object> packedResult = Object::New(isolate);
+      pack_sample_result(isolate, packedResult, sampleResult);
+
+        Local<Value> argv[] = { packedResult };
+        callback->Call(1, argv);
+    }
+
+
+    private:
+    int limit;
+	uint8_t channel;
+    vector<int> samples;
+};
+
+NAN_METHOD(sampleAdc) {
+
+    uint8_t channel = info[0]->Uint32Value();
+	int limit = To<int>(info[1]).FromJust();
+    Callback *callback = new Callback(info[2].As<Function>());
+    AsyncQueueWorker(new Mcp3008SampleWorker(channel, limit, callback));
+}
+
 NAN_MODULE_INIT(setup)
 {
 	NAN_EXPORT(target, rpio_init);
@@ -436,6 +555,8 @@ NAN_MODULE_INIT(setup)
 	NAN_EXPORT(target, spi_transfer);
 	NAN_EXPORT(target, spi_write);
 	NAN_EXPORT(target, spi_end);
+	NAN_EXPORT(target, sampleAdc);
 }
 
-NODE_MODULE(rpio, setup)
+NODE_MODULE(rpio, setup);
+
