@@ -428,7 +428,6 @@ void mcp3008_sample_adc(uint8_t channel, int millis, vector<int> & dest){
 	clock::time_point start = clock::now();
 
 	while(true){
-
         duration elapsed = clock::now() - start;
         if(elapsed.count() > millis){
             break;
@@ -444,12 +443,10 @@ void mcp3008_sample_adc(uint8_t channel, int millis, vector<int> & dest){
 
 class SampleResult{
   public:
-	int min = -1;
-	int max = -1;
+	int min = 1024;
+	int max = 0;
 	double sum = 0;
-	int avg = 0;
 	int count = 0;
-	int amplitude = 0;
 };
 
 SampleResult calc_sample_result(vector<int> & samples){
@@ -458,29 +455,21 @@ SampleResult calc_sample_result(vector<int> & samples){
 
 	for (const int sample : samples) {
    	 	result.sum += sample;
-		if(result.min<0 || result.min > sample){
+		if(result.min > sample){
 			result.min = sample;
 		}
-		if(result.max < 0 || result.max < sample){
+		if(result.max < sample){
 			result.max = sample;
 		}
   	}
-
-if(result.count > 0){
-	result.avg = result.sum/result.count;
-	result.amplitude = result.max - result.min;
-}
-
 	  return result;
 }
 
 void pack_sample_result(v8::Isolate* isolate, v8::Local<v8::Object> & target, SampleResult & result){
   target->Set(String::NewFromUtf8(isolate, "min"), Integer::New(isolate, result.min));
   target->Set(String::NewFromUtf8(isolate, "max"), Integer::New(isolate, result.max));
-  target->Set(String::NewFromUtf8(isolate, "avg"), Integer::New(isolate, result.avg));
   target->Set(String::NewFromUtf8(isolate, "count"), Integer::New(isolate, result.count));
   target->Set(String::NewFromUtf8(isolate, "sum"), Number::New(isolate, result.sum));
-  target->Set(String::NewFromUtf8(isolate, "amplitude"), Integer::New(isolate, result.amplitude));
 }
 
 class Mcp3008SampleWorker : public AsyncWorker {
